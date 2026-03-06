@@ -17,3 +17,7 @@
 
 ## Status
 Week 1-2 Foundation Completed
+
+## Live Demo
+
+[https://your-streamlit-app-link.streamlit.app](https://ai-financial-advisor-hjsfznaztqtdpxmfuwlz46.streamlit.app/)
