@@ -11,60 +11,75 @@ uploaded_file = st.file_uploader(
     "Upload Payment Screenshot", type=["png", "jpg", "jpeg"]
 )
 
+# function to convert words to number
+number_words = {
+    "zero":0,"one":1,"two":2,"three":3,"four":4,"five":5,"six":6,
+    "seven":7,"eight":8,"nine":9,"ten":10,"eleven":11,"twelve":12,
+    "thirteen":13,"fourteen":14,"fifteen":15,"sixteen":16,
+    "seventeen":17,"eighteen":18,"nineteen":19,"twenty":20,
+    "thirty":30,"forty":40,"fifty":50,"sixty":60,"seventy":70,
+    "eighty":80,"ninety":90,"hundred":100,"thousand":1000
+}
+
+def words_to_number(text):
+    words = text.lower().split()
+    total = 0
+    current = 0
+
+    for word in words:
+        if word in number_words:
+            value = number_words[word]
+
+            if value == 100:
+                current *= value
+            elif value == 1000:
+                total += current * value
+                current = 0
+            else:
+                current += value
+
+    return total + current
+
+
 if uploaded_file:
 
     image = Image.open(uploaded_file)
     st.image(image, caption="Uploaded Receipt")
 
-    # OCR TEXT EXTRACTION
+    # OCR extraction
     text = pytesseract.image_to_string(image)
 
     st.subheader("Extracted Text")
     st.write(text)
 
-    # -------------------------
-    # AMOUNT DETECTION
-    # -------------------------
-
     amount_value = None
 
-    # Pattern 1: number before word Rupees
-    match1 = re.search(r'(\d+)\s*Rupees', text)
+    # 1️⃣ Detect numeric amount
+    match1 = re.search(r'=\s*(\d+)', text)
     if match1:
-        amount_value = int(match1.group(1))
+        amount_value = int(match1.group(1)) % 1000
 
-    # Pattern 2: =340 format
+    # 2️⃣ Detect number before Rupees
     if not amount_value:
-        match2 = re.search(r'=\s*(\d+)', text)
+        match2 = re.search(r'(\d+)\s*Rupees', text)
         if match2:
             amount_value = int(match2.group(1))
 
-    # Pattern 3: ₹340 format
+    # 3️⃣ Detect amount from words
     if not amount_value:
-        match3 = re.search(r'₹\s*(\d+)', text)
-        if match3:
-            amount_value = int(match3.group(1))
+        word_match = re.search(r'Rupees\s+(.*?)\s+Only', text, re.IGNORECASE)
+        if word_match:
+            amount_value = words_to_number(word_match.group(1))
 
-    # Pattern 4: numbers near "Successful"
+    # 4️⃣ Safe fallback
     if not amount_value:
-        match4 = re.search(r'Successful.*?(\d+)', text)
-        if match4:
-            amount_value = int(match4.group(1))
-
-    # Pattern 5: fallback – detect reasonable amount
-    if not amount_value:
-        numbers = re.findall(r'\d{2,5}', text)
-
-        # remove large numbers (UPI IDs etc.)
-        numbers = [int(x) for x in numbers if 10 <= int(x) <= 5000]
+        numbers = re.findall(r'\d{2,4}', text)
+        numbers = [int(x) for x in numbers if 10 <= int(x) <= 2000]
 
         if numbers:
             amount_value = min(numbers)
 
-    # -------------------------
-    # MERCHANT DETECTION
-    # -------------------------
-
+    # Merchant detection
     merchant_match = re.search(r'To:\s*(.*)', text)
 
     if merchant_match:
@@ -76,10 +91,7 @@ if uploaded_file:
     st.write("Amount:", amount_value)
     st.write("Merchant:", merchant)
 
-    # -------------------------
-    # EXPENSE CATEGORY
-    # -------------------------
-
+    # Categorization
     merchant_lower = merchant.lower()
 
     if "swiggy" in merchant_lower or "zomato" in merchant_lower:
@@ -93,24 +105,16 @@ if uploaded_file:
     else:
         category = "Transfer"
 
-    # -------------------------
-    # DATAFRAME
-    # -------------------------
-
     data = {
-        "Merchant": [merchant],
-        "Amount": [amount_value],
-        "Category": [category]
+        "Merchant":[merchant],
+        "Amount":[amount_value],
+        "Category":[category]
     }
 
     df = pd.DataFrame(data)
 
     st.subheader("Transaction Data")
     st.write(df)
-
-    # -------------------------
-    # VISUALIZATION
-    # -------------------------
 
     category_counts = df["Category"].value_counts()
 
@@ -122,14 +126,10 @@ if uploaded_file:
 
     st.pyplot(fig)
 
-    # -------------------------
-    # FINANCIAL ADVICE
-    # -------------------------
-
     st.subheader("Financial Advice")
 
     if amount_value is None:
-        st.warning("Could not detect amount clearly. Please upload a clearer screenshot.")
+        st.warning("Could not detect amount clearly.")
 
     elif amount_value > 2000:
         st.warning("High expense detected. Consider reviewing your spending.")
