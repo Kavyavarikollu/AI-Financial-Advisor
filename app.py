@@ -7,135 +7,163 @@ import re
 
 st.title("AI Financial Advisor & Expense Manager")
 
-uploaded_file = st.file_uploader(
-    "Upload Payment Screenshot", type=["png", "jpg", "jpeg"]
+uploaded_files = st.file_uploader(
+    "Upload Payment Screenshots",
+    type=["png","jpg","jpeg"],
+    accept_multiple_files=True
 )
 
-# function to convert words to number
-number_words = {
-    "zero":0,"one":1,"two":2,"three":3,"four":4,"five":5,"six":6,
-    "seven":7,"eight":8,"nine":9,"ten":10,"eleven":11,"twelve":12,
-    "thirteen":13,"fourteen":14,"fifteen":15,"sixteen":16,
-    "seventeen":17,"eighteen":18,"nineteen":19,"twenty":20,
-    "thirty":30,"forty":40,"fifty":50,"sixty":60,"seventy":70,
-    "eighty":80,"ninety":90,"hundred":100,"thousand":1000
-}
+transactions = []
 
-def words_to_number(text):
-    words = text.lower().split()
-    total = 0
-    current = 0
-
-    for word in words:
-        if word in number_words:
-            value = number_words[word]
-
-            if value == 100:
-                current *= value
-            elif value == 1000:
-                total += current * value
-                current = 0
-            else:
-                current += value
-
-    return total + current
-
-
-if uploaded_file:
-
-    image = Image.open(uploaded_file)
-    st.image(image, caption="Uploaded Receipt")
-
-    # OCR extraction
-    text = pytesseract.image_to_string(image)
-
-    st.subheader("Extracted Text")
-    st.write(text)
+def detect_amount(text):
 
     amount_value = None
 
-    # 1️⃣ Detect numeric amount
-    match1 = re.search(r'=\s*(\d+)', text)
+    match1 = re.search(r'₹\s*(\d+)', text)
     if match1:
-        amount_value = int(match1.group(1)) % 1000
+        amount_value = int(match1.group(1))
 
-    # 2️⃣ Detect number before Rupees
     if not amount_value:
-        match2 = re.search(r'(\d+)\s*Rupees', text)
+        match2 = re.search(r'=\s*(\d+)', text)
         if match2:
             amount_value = int(match2.group(1))
 
-    # 3️⃣ Detect amount from words
     if not amount_value:
-        word_match = re.search(r'Rupees\s+(.*?)\s+Only', text, re.IGNORECASE)
-        if word_match:
-            amount_value = words_to_number(word_match.group(1))
+        match3 = re.search(r'(\d+)\s*Rupees', text)
+        if match3:
+            amount_value = int(match3.group(1))
 
-    # 4️⃣ Safe fallback
     if not amount_value:
         numbers = re.findall(r'\d{2,4}', text)
-        numbers = [int(x) for x in numbers if 10 <= int(x) <= 2000]
-
+        numbers = [int(x) for x in numbers if 10 <= int(x) <= 5000]
         if numbers:
             amount_value = min(numbers)
 
-    # Merchant detection
+    return amount_value
+
+
+def detect_merchant(text):
+
     merchant_match = re.search(r'To:\s*(.*)', text)
 
     if merchant_match:
-        merchant = merchant_match.group(1).strip()
+        return merchant_match.group(1).strip()
+
+    return "Unknown"
+
+
+def detect_category(merchant):
+
+    merchant = merchant.lower()
+
+    if "swiggy" in merchant or "zomato" in merchant:
+        return "Food"
+
+    elif "uber" in merchant or "ola" in merchant:
+        return "Transport"
+
+    elif "netflix" in merchant or "prime" in merchant:
+        return "Entertainment"
+
     else:
-        merchant = "Unknown"
+        return "Transfer"
 
-    st.subheader("Detected Details")
-    st.write("Amount:", amount_value)
-    st.write("Merchant:", merchant)
 
-    # Categorization
-    merchant_lower = merchant.lower()
+if uploaded_files:
 
-    if "swiggy" in merchant_lower or "zomato" in merchant_lower:
-        category = "Food"
-    elif "uber" in merchant_lower or "ola" in merchant_lower:
-        category = "Transport"
-    elif "amazon" in merchant_lower or "flipkart" in merchant_lower:
-        category = "Shopping"
-    elif "netflix" in merchant_lower or "prime" in merchant_lower:
-        category = "Entertainment"
-    else:
-        category = "Transfer"
+    for file in uploaded_files:
 
-    data = {
-        "Merchant":[merchant],
-        "Amount":[amount_value],
-        "Category":[category]
-    }
+        image = Image.open(file)
 
-    df = pd.DataFrame(data)
+        st.image(image, caption=file.name)
 
-    st.subheader("Transaction Data")
+        text = pytesseract.image_to_string(image)
+
+        amount = detect_amount(text)
+
+        merchant = detect_merchant(text)
+
+        category = detect_category(merchant)
+
+        transactions.append({
+            "Merchant":merchant,
+            "Amount":amount,
+            "Category":category
+        })
+
+
+    df = pd.DataFrame(transactions)
+
+    st.subheader("All Transactions")
     st.write(df)
 
-    category_counts = df["Category"].value_counts()
+    # TOTAL SPENDING
+
+    total_spent = df["Amount"].sum()
+
+    st.header("Total Amount Spent")
+    st.write(f"₹ {total_spent}")
+
+    # CATEGORY SPENDING
+
+    category_spending = df.groupby("Category")["Amount"].sum()
+
+    st.header("Category Spending")
+
+    st.write(category_spending)
+
+    # PIE CHART
 
     fig, ax = plt.subplots()
-    category_counts.plot(kind="pie", autopct="%1.1f%%", ax=ax)
 
-    plt.title("Expense Distribution")
+    category_spending.plot(
+        kind="pie",
+        autopct="%1.1f%%",
+        ax=ax
+    )
+
     plt.ylabel("")
+    plt.title("Expense Distribution")
 
     st.pyplot(fig)
 
-    st.subheader("Financial Advice")
+    # CATEGORY ADVICE
 
-    if amount_value is None:
-        st.warning("Could not detect amount clearly.")
+    st.header("Category Wise Advice")
 
-    elif amount_value > 2000:
-        st.warning("High expense detected. Consider reviewing your spending.")
+    if "Food" in category_spending:
 
-    elif amount_value > 500:
-        st.info("Moderate expense. Ensure it fits within your monthly budget.")
+        if category_spending["Food"] > 2000:
+            st.warning("High spending on food. Try cooking at home more often.")
+
+        else:
+            st.success("Food spending is under control.")
+
+    if "Transport" in category_spending:
+
+        if category_spending["Transport"] > 1500:
+            st.warning("Transport costs are high. Consider public transport.")
+
+        else:
+            st.success("Transport spending looks reasonable.")
+
+    if "Entertainment" in category_spending:
+
+        if category_spending["Entertainment"] > 1000:
+            st.warning("Entertainment expenses are high. Review subscriptions.")
+
+        else:
+            st.success("Entertainment spending is balanced.")
+
+    # OVERALL ADVICE
+
+    st.header("Overall Financial Advice")
+
+    if total_spent > 5000:
+        st.error("Your overall spending is high. Consider budgeting.")
+
+    elif total_spent > 2000:
+        st.info("Moderate spending. Track expenses carefully.")
 
     else:
-        st.success("Good spending control. Keep tracking your expenses!")
+        st.success("Great! Your spending is under control.")
