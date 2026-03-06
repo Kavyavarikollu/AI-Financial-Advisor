@@ -17,11 +17,35 @@ transactions = []
 
 # ---------------- AMOUNT DETECTION ----------------
 
+def detect_amount(text):
+
+    amount_value = None
+
+    match1 = re.search(r'₹\s*(\d+)', text)
+    if match1:
+        amount_value = int(match1.group(1))
+
+    if not amount_value:
+        match2 = re.search(r'(\d+)\s*Rupees', text)
+        if match2:
+            amount_value = int(match2.group(1))
+
+    if not amount_value:
+        numbers = re.findall(r'\d{2,4}', text)
+        numbers = [int(x) for x in numbers if 10 <= int(x) <= 5000]
+
+        if numbers:
+            amount_value = min(numbers)
+
+    return amount_value
+
+
+# ---------------- MERCHANT DETECTION ----------------
+
 def detect_merchant(text):
 
     text_lower = text.lower()
 
-    # Known merchants
     if "swiggy" in text_lower:
         return "Swiggy"
 
@@ -37,41 +61,11 @@ def detect_merchant(text):
     elif "ola" in text_lower:
         return "Ola"
 
-    # Transfer merchant detection
+    # transfer name detection
     match = re.search(r'To:\s*([A-Za-z ]+)', text)
 
     if match:
         return match.group(1).strip()
-
-    return "Unknown"
-
-
-# ---------------- MERCHANT DETECTION ----------------
-
-def detect_merchant(text):
-
-    text = text.lower()
-
-    if "swiggy" in text:
-        return "Swiggy"
-
-    elif "zomato" in text:
-        return "Zomato"
-
-    elif "netflix" in text:
-        return "Netflix"
-
-    elif "uber" in text:
-        return "Uber"
-
-    elif "ola" in text:
-        return "Ola"
-
-    else:
-        merchant_match = re.search(r'To:\s*(.*)', text)
-
-        if merchant_match:
-            return merchant_match.group(1).strip()
 
     return "Unknown"
 
@@ -102,12 +96,15 @@ if uploaded_files:
     for file in uploaded_files:
 
         image = Image.open(file)
+
         st.image(image, caption=file.name)
 
         text = pytesseract.image_to_string(image)
 
         amount = detect_amount(text)
+
         merchant = detect_merchant(text)
+
         category = detect_category(merchant)
 
         transactions.append({
@@ -122,17 +119,21 @@ if uploaded_files:
     st.subheader("All Transactions")
     st.write(df)
 
+    # TOTAL SPENDING
+
     total_spent = df["Amount"].sum()
 
     st.header("Total Amount Spent")
     st.write(f"₹ {total_spent}")
+
+    # CATEGORY SPENDING
 
     category_spending = df.groupby("Category")["Amount"].sum()
 
     st.header("Category Spending")
     st.write(category_spending)
 
-    # ---------------- CHART ----------------
+    # PIE CHART
 
     fig, ax = plt.subplots()
 
@@ -154,7 +155,7 @@ if uploaded_files:
     if "Food" in category_spending.index:
 
         if category_spending["Food"] > 2000:
-            st.warning("You are spending a lot on food. Try reducing food delivery.")
+            st.warning("High spending on food. Try reducing food delivery.")
 
         else:
             st.success("Food spending is under control.")
