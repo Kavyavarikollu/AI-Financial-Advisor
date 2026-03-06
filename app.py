@@ -13,9 +13,7 @@ uploaded_file = st.file_uploader(
 
 if uploaded_file:
 
-    # Load image
     image = Image.open(uploaded_file)
-
     st.image(image, caption="Uploaded Receipt")
 
     # OCR TEXT EXTRACTION
@@ -24,34 +22,48 @@ if uploaded_file:
     st.subheader("Extracted Text")
     st.write(text)
 
-    # ----------------------------
+    # -------------------------
     # AMOUNT DETECTION
-    # ----------------------------
+    # -------------------------
 
     amount_value = None
 
-    # Pattern 1: =340 format
-    match1 = re.search(r'=\s*(\d+)', text)
+    # Pattern 1: number before word Rupees
+    match1 = re.search(r'(\d+)\s*Rupees', text)
     if match1:
         amount_value = int(match1.group(1))
 
-    # Pattern 2: 340 Rupees format
+    # Pattern 2: =340 format
     if not amount_value:
-        match2 = re.search(r'(\d+)\s*Rupees', text)
+        match2 = re.search(r'=\s*(\d+)', text)
         if match2:
             amount_value = int(match2.group(1))
 
-    # Pattern 3: generic number detection
+    # Pattern 3: ₹340 format
+    if not amount_value:
+        match3 = re.search(r'₹\s*(\d+)', text)
+        if match3:
+            amount_value = int(match3.group(1))
+
+    # Pattern 4: numbers near "Successful"
+    if not amount_value:
+        match4 = re.search(r'Successful.*?(\d+)', text)
+        if match4:
+            amount_value = int(match4.group(1))
+
+    # Pattern 5: fallback – detect reasonable amount
     if not amount_value:
         numbers = re.findall(r'\d{2,5}', text)
-        numbers = [int(x) for x in numbers if 100 <= int(x) <= 10000]
+
+        # remove large numbers (UPI IDs etc.)
+        numbers = [int(x) for x in numbers if 10 <= int(x) <= 5000]
 
         if numbers:
             amount_value = min(numbers)
 
-    # ----------------------------
+    # -------------------------
     # MERCHANT DETECTION
-    # ----------------------------
+    # -------------------------
 
     merchant_match = re.search(r'To:\s*(.*)', text)
 
@@ -64,9 +76,9 @@ if uploaded_file:
     st.write("Amount:", amount_value)
     st.write("Merchant:", merchant)
 
-    # ----------------------------
-    # EXPENSE CATEGORIZATION
-    # ----------------------------
+    # -------------------------
+    # EXPENSE CATEGORY
+    # -------------------------
 
     merchant_lower = merchant.lower()
 
@@ -81,9 +93,9 @@ if uploaded_file:
     else:
         category = "Transfer"
 
-    # ----------------------------
+    # -------------------------
     # DATAFRAME
-    # ----------------------------
+    # -------------------------
 
     data = {
         "Merchant": [merchant],
@@ -96,45 +108,34 @@ if uploaded_file:
     st.subheader("Transaction Data")
     st.write(df)
 
-    # ----------------------------
-    # EXPENSE VISUALIZATION
-    # ----------------------------
+    # -------------------------
+    # VISUALIZATION
+    # -------------------------
 
     category_counts = df["Category"].value_counts()
 
     fig, ax = plt.subplots()
-
-    category_counts.plot(
-        kind="pie",
-        autopct="%1.1f%%",
-        ax=ax
-    )
+    category_counts.plot(kind="pie", autopct="%1.1f%%", ax=ax)
 
     plt.title("Expense Distribution")
     plt.ylabel("")
 
     st.pyplot(fig)
 
-    # ----------------------------
+    # -------------------------
     # FINANCIAL ADVICE
-    # ----------------------------
+    # -------------------------
 
     st.subheader("Financial Advice")
 
     if amount_value is None:
-        st.warning("Unable to detect expense amount. Please upload a clearer screenshot.")
+        st.warning("Could not detect amount clearly. Please upload a clearer screenshot.")
 
     elif amount_value > 2000:
-        st.warning(
-            "High expense detected. Consider reviewing your spending and setting a monthly budget."
-        )
+        st.warning("High expense detected. Consider reviewing your spending.")
 
     elif amount_value > 500:
-        st.info(
-            "Moderate expense. Make sure this fits within your monthly budget."
-        )
+        st.info("Moderate expense. Ensure it fits within your monthly budget.")
 
     else:
-        st.success(
-            "Good spending control. Keep tracking your expenses regularly!"
-        )
+        st.success("Good spending control. Keep tracking your expenses!")
