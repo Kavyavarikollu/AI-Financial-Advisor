@@ -17,27 +17,33 @@ transactions = []
 
 # ---------------- AMOUNT DETECTION ----------------
 
-def detect_amount(text):
+def detect_merchant(text):
 
-    amount_value = None
+    text_lower = text.lower()
 
-    match1 = re.search(r'₹\s*(\d+)', text)
-    if match1:
-        amount_value = int(match1.group(1))
+    # Known merchants
+    if "swiggy" in text_lower:
+        return "Swiggy"
 
-    if not amount_value:
-        match2 = re.search(r'(\d+)\s*Rupees', text)
-        if match2:
-            amount_value = int(match2.group(1))
+    elif "zomato" in text_lower:
+        return "Zomato"
 
-    if not amount_value:
-        numbers = re.findall(r'\d{2,4}', text)
-        numbers = [int(x) for x in numbers if 10 <= int(x) <= 5000]
+    elif "netflix" in text_lower:
+        return "Netflix"
 
-        if numbers:
-            amount_value = min(numbers)
+    elif "uber" in text_lower:
+        return "Uber"
 
-    return amount_value
+    elif "ola" in text_lower:
+        return "Ola"
+
+    # Transfer merchant detection
+    match = re.search(r'To:\s*([A-Za-z ]+)', text)
+
+    if match:
+        return match.group(1).strip()
+
+    return "Unknown"
 
 
 # ---------------- MERCHANT DETECTION ----------------
