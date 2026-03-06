@@ -15,6 +15,8 @@ uploaded_files = st.file_uploader(
 
 transactions = []
 
+# ---------------- AMOUNT DETECTION ----------------
+
 def detect_amount(text):
 
     amount_value = None
@@ -24,65 +26,82 @@ def detect_amount(text):
         amount_value = int(match1.group(1))
 
     if not amount_value:
-        match2 = re.search(r'=\s*(\d+)', text)
+        match2 = re.search(r'(\d+)\s*Rupees', text)
         if match2:
             amount_value = int(match2.group(1))
 
     if not amount_value:
-        match3 = re.search(r'(\d+)\s*Rupees', text)
-        if match3:
-            amount_value = int(match3.group(1))
-
-    if not amount_value:
         numbers = re.findall(r'\d{2,4}', text)
         numbers = [int(x) for x in numbers if 10 <= int(x) <= 5000]
+
         if numbers:
             amount_value = min(numbers)
 
     return amount_value
 
 
+# ---------------- MERCHANT DETECTION ----------------
+
 def detect_merchant(text):
 
-    merchant_match = re.search(r'To:\s*(.*)', text)
+    text = text.lower()
 
-    if merchant_match:
-        return merchant_match.group(1).strip()
+    if "swiggy" in text:
+        return "Swiggy"
+
+    elif "zomato" in text:
+        return "Zomato"
+
+    elif "netflix" in text:
+        return "Netflix"
+
+    elif "uber" in text:
+        return "Uber"
+
+    elif "ola" in text:
+        return "Ola"
+
+    else:
+        merchant_match = re.search(r'To:\s*(.*)', text)
+
+        if merchant_match:
+            return merchant_match.group(1).strip()
 
     return "Unknown"
 
+
+# ---------------- CATEGORY DETECTION ----------------
 
 def detect_category(merchant):
 
     merchant = merchant.lower()
 
-    if "swiggy" in merchant or "zomato" in merchant:
+    if merchant in ["swiggy","zomato"]:
         return "Food"
 
-    elif "uber" in merchant or "ola" in merchant:
+    elif merchant in ["uber","ola"]:
         return "Transport"
 
-    elif "netflix" in merchant or "prime" in merchant:
+    elif merchant in ["netflix","prime"]:
         return "Entertainment"
 
     else:
         return "Transfer"
 
 
+# ---------------- MAIN PROCESS ----------------
+
 if uploaded_files:
 
     for file in uploaded_files:
 
         image = Image.open(file)
-
         st.image(image, caption=file.name)
 
         text = pytesseract.image_to_string(image)
 
         amount = detect_amount(text)
-
         merchant = detect_merchant(text)
-
         category = detect_category(merchant)
 
         transactions.append({
@@ -97,22 +116,17 @@ if uploaded_files:
     st.subheader("All Transactions")
     st.write(df)
 
-    # TOTAL SPENDING
-
     total_spent = df["Amount"].sum()
 
     st.header("Total Amount Spent")
     st.write(f"₹ {total_spent}")
 
-    # CATEGORY SPENDING
-
     category_spending = df.groupby("Category")["Amount"].sum()
 
     st.header("Category Spending")
-
     st.write(category_spending)
 
-    # PIE CHART
+    # ---------------- CHART ----------------
 
     fig, ax = plt.subplots()
 
@@ -122,40 +136,43 @@ if uploaded_files:
         ax=ax
     )
 
-    plt.ylabel("")
     plt.title("Expense Distribution")
+    plt.ylabel("")
 
     st.pyplot(fig)
 
-    # CATEGORY ADVICE
+    # ---------------- CATEGORY ADVICE ----------------
 
     st.header("Category Wise Advice")
 
-    if "Food" in category_spending:
+    if "Food" in category_spending.index:
 
         if category_spending["Food"] > 2000:
-            st.warning("High spending on food. Try cooking at home more often.")
+            st.warning("You are spending a lot on food. Try reducing food delivery.")
 
         else:
             st.success("Food spending is under control.")
 
-    if "Transport" in category_spending:
+    if "Transport" in category_spending.index:
 
         if category_spending["Transport"] > 1500:
-            st.warning("Transport costs are high. Consider public transport.")
+            st.warning("Transport expenses are high. Try public transport.")
 
         else:
             st.success("Transport spending looks reasonable.")
 
-    if "Entertainment" in category_spending:
+    if "Entertainment" in category_spending.index:
 
         if category_spending["Entertainment"] > 1000:
-            st.warning("Entertainment expenses are high. Review subscriptions.")
+            st.warning("Entertainment spending is high. Review subscriptions.")
 
         else:
             st.success("Entertainment spending is balanced.")
 
-    # OVERALL ADVICE
+    if "Transfer" in category_spending.index:
+        st.info("Money transfers detected.")
+
+    # ---------------- OVERALL ADVICE ----------------
 
     st.header("Overall Financial Advice")
 
