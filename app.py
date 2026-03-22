@@ -49,22 +49,22 @@ def words_to_number(text):
 
 def detect_amount(text):
 
-    # ₹ format
-    match1 = re.search(r'₹\s*(\d+)', text)
-    if match1:
-        return int(match1.group(1))
+    # 1️⃣ PRIORITY → words
+    match_words = re.search(r'Rupees\s+(.*?)\s+Only', text, re.IGNORECASE)
+    if match_words:
+        return words_to_number(match_words.group(1))
 
-    # Words format
-    match2 = re.search(r'Rupees\s+(.*?)\s+Only', text, re.IGNORECASE)
-    if match2:
-        return words_to_number(match2.group(1))
+    # 2️⃣ ₹ symbol
+    match_rupee = re.search(r'₹\s*(\d+)', text)
+    if match_rupee:
+        return int(match_rupee.group(1))
 
-    # Fallback numbers
+    # 3️⃣ fallback numbers
     numbers = re.findall(r'\d{2,5}', text)
     numbers = [int(x) for x in numbers if 10 <= int(x) <= 5000]
 
     if numbers:
-        return min(numbers) % 1000  # fix 2340 → 340
+        return min(numbers) % 1000
 
     return None
 
@@ -140,7 +140,7 @@ if transactions:
 
     total = df["Amount"].sum()
 
-    st.header("💸 Total Amount")
+    st.header("💸 Total Amount Spent")
     st.write(f"₹ {total}")
 
     category_spending = df.groupby("Category")["Amount"].sum()
@@ -155,14 +155,14 @@ if transactions:
 
     # -------- INSIGHTS --------
 
-    st.header("📈 Insights")
+    st.header("📈 Spending Insights")
 
     highest = category_spending.idxmax()
-    st.write(f"You spend most on **{highest}**")
+    st.write(f"👉 You spend the most on: **{highest}**")
 
     # -------- ADVICE --------
 
-    st.header("💡 Advice")
+    st.header("💡 Category Wise Advice")
 
     if highest == "Food":
         st.warning("Reduce food spending 🍔")
@@ -171,7 +171,9 @@ if transactions:
     elif highest == "Transport":
         st.warning("Transport cost is high 🚗")
     else:
-        st.info("Spending looks okay")
+        st.info("Transfers detected")
+
+    st.header("🧠 Overall Financial Advice")
 
     if total > 5000:
         st.error("Too much spending ⚠️")
