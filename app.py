@@ -7,8 +7,6 @@ import re
 
 st.title("💰 AI Financial Advisor Dashboard")
 
-# ---------------- FILE UPLOAD ----------------
-
 uploaded_files = st.file_uploader(
     "Upload Payment Screenshots",
     type=["png","jpg","jpeg"],
@@ -17,32 +15,61 @@ uploaded_files = st.file_uploader(
 
 transactions = []
 
-# ---------------- AMOUNT DETECTION ----------------
+# -------- WORD TO NUMBER --------
+
+number_words = {
+    "zero":0,"one":1,"two":2,"three":3,"four":4,"five":5,
+    "six":6,"seven":7,"eight":8,"nine":9,"ten":10,
+    "twenty":20,"thirty":30,"forty":40,"fifty":50,
+    "sixty":60,"seventy":70,"eighty":80,"ninety":90,
+    "hundred":100,"thousand":1000
+}
+
+def words_to_number(text):
+    words = text.lower().split()
+    total = 0
+    current = 0
+
+    for word in words:
+        if word in number_words:
+            val = number_words[word]
+
+            if val == 100:
+                current *= val
+            elif val == 1000:
+                total += current * val
+                current = 0
+            else:
+                current += val
+
+    return total + current
+
+
+# -------- AMOUNT DETECTION --------
 
 def detect_amount(text):
 
-    amount_value = None
-
+    # ₹ format
     match1 = re.search(r'₹\s*(\d+)', text)
     if match1:
-        amount_value = int(match1.group(1))
+        return int(match1.group(1))
 
-    if not amount_value:
-        match2 = re.search(r'(\d+)\s*Rupees', text)
-        if match2:
-            amount_value = int(match2.group(1))
+    # Words format
+    match2 = re.search(r'Rupees\s+(.*?)\s+Only', text, re.IGNORECASE)
+    if match2:
+        return words_to_number(match2.group(1))
 
-    if not amount_value:
-        numbers = re.findall(r'\d{2,4}', text)
-        numbers = [int(x) for x in numbers if 10 <= int(x) <= 5000]
+    # Fallback numbers
+    numbers = re.findall(r'\d{2,5}', text)
+    numbers = [int(x) for x in numbers if 10 <= int(x) <= 5000]
 
-        if numbers:
-            amount_value = min(numbers)
+    if numbers:
+        return min(numbers) % 1000  # fix 2340 → 340
 
-    return amount_value
+    return None
 
 
-# ---------------- MERCHANT DETECTION ----------------
+# -------- MERCHANT --------
 
 def detect_merchant(text):
 
@@ -50,47 +77,37 @@ def detect_merchant(text):
 
     if "swiggy" in text_lower:
         return "Swiggy"
-
-    elif "zomato" in text_lower:
-        return "Zomato"
-
     elif "netflix" in text_lower:
         return "Netflix"
-
     elif "uber" in text_lower:
         return "Uber"
-
     elif "ola" in text_lower:
         return "Ola"
 
     match = re.search(r'To:\s*([A-Za-z ]+)', text)
-
     if match:
         return match.group(1).strip()
 
     return "Unknown"
 
 
-# ---------------- CATEGORY ----------------
+# -------- CATEGORY --------
 
 def detect_category(merchant):
 
     merchant = merchant.lower()
 
-    if merchant in ["swiggy","zomato"]:
+    if merchant in ["swiggy"]:
         return "Food"
-
     elif merchant in ["uber","ola"]:
         return "Transport"
-
-    elif merchant in ["netflix","prime"]:
+    elif merchant in ["netflix"]:
         return "Entertainment"
-
     else:
         return "Transfer"
 
 
-# ---------------- PROCESS IMAGES ----------------
+# -------- PROCESS --------
 
 if uploaded_files:
 
@@ -112,37 +129,7 @@ if uploaded_files:
         })
 
 
-# ---------------- MANUAL ENTRY ----------------
-
-st.subheader("➕ Add Manual Expense")
-
-manual_amount = st.number_input("Enter Amount", min_value=0)
-manual_category = st.selectbox(
-    "Select Category",
-    ["Food","Transport","Entertainment","Transfer"]
-)
-
-if st.button("Add Expense"):
-    transactions.append({
-        "Merchant":"Manual Entry",
-        "Amount":manual_amount,
-        "Category":manual_category
-    })
-
-
-# ---------------- CSV UPLOAD ----------------
-
-st.subheader("📂 Upload CSV File")
-
-csv_file = st.file_uploader("Upload CSV", type=["csv"])
-
-if csv_file:
-    csv_df = pd.read_csv(csv_file)
-    st.write(csv_df)
-    transactions.extend(csv_df.to_dict('records'))
-
-
-# ---------------- DASHBOARD ----------------
+# -------- DASHBOARD --------
 
 if transactions:
 
@@ -151,81 +138,44 @@ if transactions:
     st.subheader("📊 All Transactions")
     st.write(df)
 
-    total_spent = df["Amount"].sum()
+    total = df["Amount"].sum()
 
-    st.header("💸 Total Amount Spent")
-    st.write(f"₹ {total_spent}")
+    st.header("💸 Total Amount")
+    st.write(f"₹ {total}")
 
     category_spending = df.groupby("Category")["Amount"].sum()
 
     st.header("📌 Category Spending")
     st.write(category_spending)
 
-    # ---------------- PIE CHART ----------------
-
     fig, ax = plt.subplots()
     category_spending.plot(kind="pie", autopct="%1.1f%%", ax=ax)
-    plt.title("Expense Distribution")
     plt.ylabel("")
     st.pyplot(fig)
 
-    # ---------------- BUDGET SYSTEM ----------------
+    # -------- INSIGHTS --------
 
-    st.header("🎯 Budget Setting")
+    st.header("📈 Insights")
 
-    budget = st.number_input("Set Monthly Budget", min_value=0)
+    highest = category_spending.idxmax()
+    st.write(f"You spend most on **{highest}**")
 
-    if budget > 0:
-        if total_spent > budget:
-            st.error("⚠️ You have exceeded your budget!")
-        else:
-            st.success("✅ You are within your budget")
+    # -------- ADVICE --------
 
-    # ---------------- INSIGHTS ----------------
+    st.header("💡 Advice")
 
-    st.header("📈 Spending Insights")
-
-    highest_category = category_spending.idxmax()
-
-    st.write(f"👉 You spend the most on: **{highest_category}**")
-
-    # ---------------- CATEGORY ADVICE ----------------
-
-    st.header("💡 Category Wise Advice")
-
-    if "Food" in category_spending.index:
-
-        if category_spending["Food"] > 2000:
-            st.warning("High spending on food. Try reducing outside orders.")
-        else:
-            st.success("Food spending is under control.")
-
-    if "Transport" in category_spending.index:
-
-        if category_spending["Transport"] > 1500:
-            st.warning("Transport expenses are high.")
-        else:
-            st.success("Transport spending is reasonable.")
-
-    if "Entertainment" in category_spending.index:
-
-        if category_spending["Entertainment"] > 1000:
-            st.warning("Entertainment spending is high.")
-        else:
-            st.success("Entertainment spending is balanced.")
-
-    if "Transfer" in category_spending.index:
-        st.info("Transfers detected.")
-
-    # ---------------- OVERALL ADVICE ----------------
-
-    st.header("🧠 Overall Financial Advice")
-
-    if total_spent > 5000:
-        st.error("Your overall spending is high. Consider budgeting.")
-
-    elif total_spent > 2000:
-        st.info("Moderate spending. Track expenses carefully.")
-
+    if highest == "Food":
+        st.warning("Reduce food spending 🍔")
+    elif highest == "Entertainment":
+        st.warning("Reduce subscriptions 🎬")
+    elif highest == "Transport":
+        st.warning("Transport cost is high 🚗")
     else:
-        st.success("Great! Your spending is under control.")
+        st.info("Spending looks okay")
+
+    if total > 5000:
+        st.error("Too much spending ⚠️")
+    elif total > 2000:
+        st.info("Moderate spending")
+    else:
+        st.success("Good control 👍")
