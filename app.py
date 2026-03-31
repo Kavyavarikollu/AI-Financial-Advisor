@@ -126,7 +126,13 @@ if transactions:
     st.header("💸 Total Amount Spent")
     st.write(f"₹ {total}")
 
-    category_spending = df.groupby("Category")["Amount"].sum()
+    df = df.dropna()  # remove empty rows
+
+df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce")
+
+category_spending = df.groupby("Category")["Amount"].sum()
+
+category_spending = category_spending[category_spending > 0]
 
     st.header("📌 Category Spending")
     st.write(category_spending)
