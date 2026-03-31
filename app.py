@@ -4,8 +4,9 @@ from PIL import Image
 import pandas as pd
 import matplotlib.pyplot as plt
 import re
+from datetime import datetime
 
-st.title("💰 AI Financial Advisor Dashboard")
+st.title("💰 AI Financial Advisor Dashboard (Advanced)")
 
 uploaded_files = st.file_uploader(
     "Upload Payment Screenshots",
@@ -29,11 +30,9 @@ def words_to_number(text):
     words = text.lower().split()
     total = 0
     current = 0
-
     for word in words:
         if word in number_words:
             val = number_words[word]
-
             if val == 100:
                 current *= val
             elif val == 1000:
@@ -41,38 +40,29 @@ def words_to_number(text):
                 current = 0
             else:
                 current += val
-
     return total + current
 
-
-# -------- AMOUNT DETECTION --------
+# -------- AMOUNT --------
 
 def detect_amount(text):
-
-    # 1️⃣ PRIORITY → words
     match_words = re.search(r'Rupees\s+(.*?)\s+Only', text, re.IGNORECASE)
     if match_words:
         return words_to_number(match_words.group(1))
 
-    # 2️⃣ ₹ symbol
     match_rupee = re.search(r'₹\s*(\d+)', text)
     if match_rupee:
         return int(match_rupee.group(1))
 
-    # 3️⃣ fallback numbers
     numbers = re.findall(r'\d{2,5}', text)
     numbers = [int(x) for x in numbers if 10 <= int(x) <= 5000]
-
     if numbers:
         return min(numbers) % 1000
 
     return None
 
-
 # -------- MERCHANT --------
 
 def detect_merchant(text):
-
     text_lower = text.lower()
 
     if "swiggy" in text_lower:
@@ -90,11 +80,9 @@ def detect_merchant(text):
 
     return "Unknown"
 
-
 # -------- CATEGORY --------
 
 def detect_category(merchant):
-
     merchant = merchant.lower()
 
     if merchant in ["swiggy"]:
@@ -106,13 +94,10 @@ def detect_category(merchant):
     else:
         return "Transfer"
 
-
 # -------- PROCESS --------
 
 if uploaded_files:
-
     for file in uploaded_files:
-
         image = Image.open(file)
         st.image(image, caption=file.name)
 
@@ -125,21 +110,19 @@ if uploaded_files:
         transactions.append({
             "Merchant":merchant,
             "Amount":amount,
-            "Category":category
+            "Category":category,
+            "Date":datetime.now()
         })
-
 
 # -------- DASHBOARD --------
 
 if transactions:
-
     df = pd.DataFrame(transactions)
 
     st.subheader("📊 All Transactions")
     st.write(df)
 
     total = df["Amount"].sum()
-
     st.header("💸 Total Amount Spent")
     st.write(f"₹ {total}")
 
@@ -154,26 +137,43 @@ if transactions:
     st.pyplot(fig)
 
     # -------- INSIGHTS --------
-
-    st.header("📈 Spending Insights")
+    st.header("📈 Insights")
 
     highest = category_spending.idxmax()
-    st.write(f"👉 You spend the most on: **{highest}**")
+    percent = (category_spending / total) * 100
 
-    # -------- ADVICE --------
+    st.write(f"You spend most on **{highest}**")
+    st.write(percent)
 
-    st.header("💡 Category Wise Advice")
+    # -------- SAVINGS --------
+    st.header("💡 Savings Suggestions")
 
-    if highest == "Food":
-        st.warning("Reduce food spending 🍔")
-    elif highest == "Entertainment":
-        st.warning("Reduce subscriptions 🎬")
-    elif highest == "Transport":
-        st.warning("Transport cost is high 🚗")
-    else:
-        st.info("Transfers detected")
+    save = int(category_spending[highest] * 0.2)
+    st.warning(f"Reduce {highest} spending → Save ₹{save}")
 
-    st.header("🧠 Overall Financial Advice")
+    # -------- PREDICTION --------
+    st.header("🔮 Prediction")
+
+    avg = df["Amount"].mean()
+    predicted = int(avg * len(df) * 1.2)
+
+    st.write(f"Next month expected spending: ₹{predicted}")
+
+    # -------- CHATBOT --------
+    st.header("🤖 Ask AI")
+
+    user_q = st.text_input("Ask financial question")
+
+    if user_q:
+        if "save" in user_q.lower():
+            st.write(f"Reduce {highest} spending to save money")
+        elif "spend" in user_q.lower():
+            st.write(f"You are spending more on {highest}")
+        else:
+            st.write("Track your expenses regularly for better control")
+
+    # -------- FINAL ADVICE --------
+    st.header("🧠 Overall Advice")
 
     if total > 5000:
         st.error("Too much spending ⚠️")
