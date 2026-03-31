@@ -10,14 +10,13 @@ st.title("💰 AI Financial Advisor Dashboard (Advanced)")
 
 uploaded_files = st.file_uploader(
     "Upload Payment Screenshots",
-    type=["png","jpg","jpeg"],
+    type=["png", "jpg", "jpeg"],
     accept_multiple_files=True
 )
 
 transactions = []
 
 # -------- WORD TO NUMBER --------
-
 number_words = {
     "zero":0,"one":1,"two":2,"three":3,"four":4,"five":5,
     "six":6,"seven":7,"eight":8,"nine":9,"ten":10,
@@ -42,9 +41,9 @@ def words_to_number(text):
                 current += val
     return total + current
 
-# -------- AMOUNT --------
-
+# -------- AMOUNT DETECTION --------
 def detect_amount(text):
+
     match_words = re.search(r'Rupees\s+(.*?)\s+Only', text, re.IGNORECASE)
     if match_words:
         return words_to_number(match_words.group(1))
@@ -60,8 +59,7 @@ def detect_amount(text):
 
     return None
 
-# -------- MERCHANT --------
-
+# -------- MERCHANT DETECTION --------
 def detect_merchant(text):
     text_lower = text.lower()
 
@@ -80,23 +78,22 @@ def detect_merchant(text):
 
     return "Unknown"
 
-# -------- CATEGORY --------
-
+# -------- CATEGORY DETECTION --------
 def detect_category(merchant):
     merchant = merchant.lower()
 
     if merchant in ["swiggy"]:
         return "Food"
-    elif merchant in ["uber","ola"]:
+    elif merchant in ["uber", "ola"]:
         return "Transport"
     elif merchant in ["netflix"]:
         return "Entertainment"
     else:
         return "Transfer"
 
-# -------- PROCESS --------
-
+# -------- PROCESS FILES --------
 if uploaded_files:
+
     for file in uploaded_files:
         image = Image.open(file)
         st.image(image, caption=file.name)
@@ -108,66 +105,70 @@ if uploaded_files:
         category = detect_category(merchant)
 
         transactions.append({
-            "Merchant":merchant,
-            "Amount":amount,
-            "Category":category,
-            "Date":datetime.now()
+            "Merchant": merchant,
+            "Amount": amount,
+            "Category": category,
+            "Date": datetime.now()
         })
 
 # -------- DASHBOARD --------
-
 if transactions:
+
     df = pd.DataFrame(transactions)
+
+    # CLEAN DATA
+    df = df.dropna()
+    df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce")
+    df = df.dropna()
 
     st.subheader("📊 All Transactions")
     st.write(df)
 
+    # TOTAL
     total = df["Amount"].sum()
     st.header("💸 Total Amount Spent")
-    st.write(f"₹ {total}")
+    st.write(f"₹ {int(total)}")
 
-    df = df.dropna()  # remove empty rows
-
-df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce")
-
-category_spending = df.groupby("Category")["Amount"].sum()
-
-category_spending = category_spending[category_spending > 0]
-
+    # CATEGORY SPENDING
     st.header("📌 Category Spending")
+
+    category_spending = df.groupby("Category")["Amount"].sum()
+    category_spending = category_spending[category_spending > 0]
+
     st.write(category_spending)
 
+    # PIE CHART
     fig, ax = plt.subplots()
     category_spending.plot(kind="pie", autopct="%1.1f%%", ax=ax)
     plt.ylabel("")
     st.pyplot(fig)
 
-    # -------- INSIGHTS --------
+    # INSIGHTS
     st.header("📈 Insights")
 
-    highest = category_spending.idxmax()
-    percent = (category_spending / total) * 100
+    if not category_spending.empty:
+        highest = category_spending.idxmax()
+        percent = (category_spending / total) * 100
 
-    st.write(f"You spend most on **{highest}**")
-    st.write(percent)
+        st.write(f"You spend most on **{highest}**")
+        st.write(percent)
 
-    # -------- SAVINGS --------
-    st.header("💡 Savings Suggestions")
+        # SAVINGS
+        st.header("💡 Savings Suggestions")
+        save = int(category_spending[highest] * 0.2)
+        st.warning(f"Reduce {highest} spending → Save ₹{save}")
 
-    save = int(category_spending[highest] * 0.2)
-    st.warning(f"Reduce {highest} spending → Save ₹{save}")
+    else:
+        st.error("No valid expense data found")
 
-    # -------- PREDICTION --------
+    # PREDICTION
     st.header("🔮 Prediction")
-
     avg = df["Amount"].mean()
     predicted = int(avg * len(df) * 1.2)
-
     st.write(f"Next month expected spending: ₹{predicted}")
 
-    # -------- CHATBOT --------
+    # CHATBOT
     st.header("🤖 Ask AI")
-
     user_q = st.text_input("Ask financial question")
 
     if user_q:
@@ -178,7 +179,7 @@ category_spending = category_spending[category_spending > 0]
         else:
             st.write("Track your expenses regularly for better control")
 
-    # -------- FINAL ADVICE --------
+    # FINAL ADVICE
     st.header("🧠 Overall Advice")
 
     if total > 5000:
