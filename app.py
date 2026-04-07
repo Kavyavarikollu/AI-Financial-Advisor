@@ -1,12 +1,95 @@
 import streamlit as st
 import pytesseract
-from PIL import Image
+from PIL import Image, ImageEnhance
 import pandas as pd
-import matplotlib.pyplot as plt
-import re
 from datetime import datetime
+import re
+import matplotlib.pyplot as plt
 
-st.title("💰 AI Financial Advisor Dashboard (Advanced)")
+pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+
+
+# ---------------- PREPROCESS ----------------
+def preprocess(image):
+    image = image.convert('L')
+    enhancer = ImageEnhance.Contrast(image)
+    return enhancer.enhance(3)
+
+
+# ---------------- CROP AMOUNT AREA ----------------
+def crop_amount_area(image):
+    width, height = image.size
+    return image.crop((0, 0, width, height * 0.45))  # TOP AREA ONLY
+
+
+# ---------------- OCR ----------------
+def extract_text(image):
+    image = preprocess(image)
+    return pytesseract.image_to_string(image)
+
+
+# ---------------- DETECT AMOUNT ----------------
+def detect_amount(image):
+
+    # 🔥 STEP 1: crop top area (MAIN FIX)
+    cropped = crop_amount_area(image)
+    text = extract_text(cropped)
+
+    # STEP 2: ₹ detection
+    rupee = re.findall(r'₹\s?(\d+)', text)
+    if rupee:
+        return int(rupee[0])
+
+    # STEP 3: fallback only from cropped area
+    nums = re.findall(r'\b\d{2,4}\b', text)
+
+    for n in nums:
+        val = int(n)
+        if 100 <= val <= 5000:
+            return val
+
+    return 0
+
+
+# ---------------- MERCHANT ----------------
+def detect_merchant(text):
+
+    text_lower = text.lower()
+
+    if "swiggy" in text_lower:
+        return "Swiggy"
+    elif "netflix" in text_lower:
+        return "Netflix"
+    elif "amazon" in text_lower:
+        return "Amazon"
+    elif "google" in text_lower:
+        return "Google Ads"
+
+    match = re.search(r"to[:\s]+([A-Za-z]+(?:\s[A-Za-z]+)?)", text, re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+
+    if "paytm" in text_lower or "upi" in text_lower:
+        return "UPI Transfer"
+
+    return "Unknown"
+
+
+# ---------------- CATEGORY ----------------
+def detect_category(merchant):
+    merchant = merchant.lower()
+
+    if merchant in ["swiggy"]:
+        return "Food"
+    elif merchant in ["netflix"]:
+        return "Entertainment"
+    else:
+        return "Transfer"
+
+
+# ---------------- UI ----------------
+
+st.title("💰 AI Financial Advisor Dashboard (Final Winner Version)")
 
 uploaded_files = st.file_uploader(
     "Upload Payment Screenshots",
@@ -14,177 +97,92 @@ uploaded_files = st.file_uploader(
     accept_multiple_files=True
 )
 
-transactions = []
+# RESET
+if st.button("Reset Data"):
+    df = pd.DataFrame(columns=["Merchant", "Amount", "Category", "Date", "file_id"])
+    df.to_csv("data.csv", index=False)
+    st.success("Data cleared! Reload app.")
 
-# -------- WORD TO NUMBER --------
-number_words = {
-    "zero":0,"one":1,"two":2,"three":3,"four":4,"five":5,
-    "six":6,"seven":7,"eight":8,"nine":9,"ten":10,
-    "twenty":20,"thirty":30,"forty":40,"fifty":50,
-    "sixty":60,"seventy":70,"eighty":80,"ninety":90,
-    "hundred":100,"thousand":1000
-}
+# LOAD
+try:
+    df = pd.read_csv("data.csv")
+except:
+    df = pd.DataFrame(columns=["Merchant", "Amount", "Category", "Date", "file_id"])
 
-def words_to_number(text):
-    words = text.lower().split()
-    total = 0
-    current = 0
-    for word in words:
-        if word in number_words:
-            val = number_words[word]
-            if val == 100:
-                current *= val
-            elif val == 1000:
-                total += current * val
-                current = 0
-            else:
-                current += val
-    return total + current
+df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce")
+df = df.dropna()
 
-# -------- AMOUNT DETECTION --------
-def detect_amount(text):
-
-    match_words = re.search(r'Rupees\s+(.*?)\s+Only', text, re.IGNORECASE)
-    if match_words:
-        return words_to_number(match_words.group(1))
-
-    match_rupee = re.search(r'₹\s*(\d+)', text)
-    if match_rupee:
-        return int(match_rupee.group(1))
-
-    numbers = re.findall(r'\d{2,5}', text)
-    numbers = [int(x) for x in numbers if 10 <= int(x) <= 5000]
-    if numbers:
-        return min(numbers) % 1000
-
-    return None
-
-# -------- MERCHANT DETECTION --------
-def detect_merchant(text):
-    text_lower = text.lower()
-
-    if "swiggy" in text_lower:
-        return "Swiggy"
-    elif "netflix" in text_lower:
-        return "Netflix"
-    elif "uber" in text_lower:
-        return "Uber"
-    elif "ola" in text_lower:
-        return "Ola"
-
-    match = re.search(r'To:\s*([A-Za-z ]+)', text)
-    if match:
-        return match.group(1).strip()
-
-    return "Unknown"
-
-# -------- CATEGORY DETECTION --------
-def detect_category(merchant):
-    merchant = merchant.lower()
-
-    if merchant in ["swiggy"]:
-        return "Food"
-    elif merchant in ["uber", "ola"]:
-        return "Transport"
-    elif merchant in ["netflix"]:
-        return "Entertainment"
-    else:
-        return "Transfer"
-
-# -------- PROCESS FILES --------
+# PROCESS
 if uploaded_files:
-
     for file in uploaded_files:
+
+        if file.name in df["file_id"].values:
+            continue
+
         image = Image.open(file)
-        st.image(image, caption=file.name)
+        st.image(image)
 
-        text = pytesseract.image_to_string(image)
+        full_text = extract_text(image)
 
-        amount = detect_amount(text)
-        merchant = detect_merchant(text)
+        amount = detect_amount(image)
+        merchant = detect_merchant(full_text)
         category = detect_category(merchant)
 
-        transactions.append({
+        new_row = {
             "Merchant": merchant,
             "Amount": amount,
             "Category": category,
-            "Date": datetime.now()
-        })
+            "Date": datetime.now(),
+            "file_id": file.name
+        }
 
-# -------- DASHBOARD --------
-if transactions:
+        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
 
-    df = pd.DataFrame(transactions)
+# SAVE
+df.to_csv("data.csv", index=False)
 
-    # CLEAN DATA
-    df = df.dropna()
-    df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce")
-    df = df.dropna()
+# DISPLAY
+st.header("📊 All Transactions")
+st.dataframe(df)
 
-    st.subheader("📊 All Transactions")
-    st.write(df)
+if not df.empty:
 
-    # TOTAL
-    total = df["Amount"].sum()
-    st.header("💸 Total Amount Spent")
-    st.write(f"₹ {int(total)}")
-
-    # CATEGORY SPENDING
-    st.header("📌 Category Spending")
+    total = int(df["Amount"].sum())
+    st.header(f"💸 Total Amount Spent: ₹{total}")
 
     category_spending = df.groupby("Category")["Amount"].sum()
-    category_spending = category_spending[category_spending > 0]
 
-    st.write(category_spending)
+    st.header("📌 Category Spending")
+    st.dataframe(category_spending.reset_index())
 
-    # PIE CHART
+    st.header("📊 Expense Distribution")
     fig, ax = plt.subplots()
-    category_spending.plot(kind="pie", autopct="%1.1f%%", ax=ax)
-    plt.ylabel("")
+    ax.pie(category_spending.values,
+           labels=category_spending.index,
+           autopct="%1.1f%%")
     st.pyplot(fig)
 
-    # INSIGHTS
+    highest = category_spending.idxmax()
+
     st.header("📈 Insights")
+    st.write(f"You spend the most on: **{highest}**")
 
-    if not category_spending.empty:
-        highest = category_spending.idxmax()
-        percent = (category_spending / total) * 100
+    save = int(category_spending.max() * 0.2)
 
-        st.write(f"You spend most on **{highest}**")
-        st.write(percent)
+    st.header("💡 Savings Suggestions")
+    st.write(f"Reduce {highest} by 20% → Save ₹{save}")
 
-        # SAVINGS
-        st.header("💡 Savings Suggestions")
-        save = int(category_spending[highest] * 0.2)
-        st.warning(f"Reduce {highest} spending → Save ₹{save}")
-
-    else:
-        st.error("No valid expense data found")
-
-    # PREDICTION
-    st.header("🔮 Prediction")
     avg = df["Amount"].mean()
-    predicted = int(avg * len(df) * 1.2)
-    st.write(f"Next month expected spending: ₹{predicted}")
+    pred = int(avg * len(df) * 1.2)
 
-    # CHATBOT
-    st.header("🤖 Ask AI")
-    user_q = st.text_input("Ask financial question")
+    st.header("🔮 Prediction")
+    st.write(f"Next month expected spending: ₹{pred}")
 
-    if user_q:
-        if "save" in user_q.lower():
-            st.write(f"Reduce {highest} spending to save money")
-        elif "spend" in user_q.lower():
-            st.write(f"You are spending more on {highest}")
+    st.header("🎯 Budget Setting")
+    budget = st.number_input("Enter Monthly Budget", min_value=0)
+
+    if budget:
+        if total > budget:
+            st.error(f"Exceeded by ₹{total - int(budget)}")
         else:
-            st.write("Track your expenses regularly for better control")
-
-    # FINAL ADVICE
-    st.header("🧠 Overall Advice")
-
-    if total > 5000:
-        st.error("Too much spending ⚠️")
-    elif total > 2000:
-        st.info("Moderate spending")
-    else:
-        st.success("Good control 👍")
+            st.success("Within budget")
