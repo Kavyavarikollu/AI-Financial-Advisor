@@ -1,6 +1,9 @@
-pytesseract
-pillow
+streamlit
 pandas
+numpy
 matplotlib
-openai
-opencv-python
+scikit-learn
+pillow
+pytesseract
+reportlab
+google-generativeai
